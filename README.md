@@ -1,7 +1,7 @@
 **Project Overview**
 
 - **Purpose:** A minimal MNIST proof-of-concept repository that extracts MNIST data, trains small neural networks (CPU-only and optional NumPy/TQDM variant), and provides a simple browser-based drawing interface to load and run trained weights.
--
+- To demo, a sample model is included in models/demo
 **Included Files**
 
 - `dataset_extracter.py`: Extracts MNIST IDX files into human-readable text bitmaps under `datasets/train/extracted`.
@@ -10,6 +10,7 @@
 - `interface.html`: Browser UI that lets you draw a 28x28 digit and load model layers (`layer_0.csv`, `layer_1.csv`, ...).
 - `mouse_macro.py`: Utility script (included as-is) to stop PC from turning off
 - `datasets/train/MNIST`: Raw IDX files
+- `models/demo`: Pretrained demo model
 
 **Prerequisites**
 
@@ -59,3 +60,4 @@ python no_imports_train.py
 
 
 -- End of README --
+
