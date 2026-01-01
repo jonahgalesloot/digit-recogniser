@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MNIST Drawing & Prediction App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f9f9f9;
+    }
+    h1 { margin-top: 20px; }
+    #grid {
+      display: inline-block;
+      width: 560px; /* 28 cells * 20px */
+      height: 560px;
+      border: 2px solid #333;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .cell {
+      width: 20px;
+      height: 20px;
+      float: left;
+      box-sizing: border-box;
+      border: 1px solid #ddd;
+      background-color: white;
+      cursor: pointer;
+    }
+    .cell.active {
+      background-color: black;
+    }
+    #tools {
+      margin-bottom: 20px;
+    }
+    #confidenceBars {
+      width: 300px;
+      margin: 0 auto;
+      text-align: left;
+    }
+    .bar-container {
+      width: 100%;
+      background-color: #eee;
+      margin: 5px 0;
+      border: 1px solid #ccc;
+    }
+    .bar {
+      height: 20px;
+      background-color: #4caf50;
+      color: white;
+      line-height: 20px;
+      text-align: right;
+      padding-right: 5px;
+    }
+    #loadWeightsButton {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>MNIST Drawing & Prediction App</h1>
+  
+  <!-- Tool Selection -->
+  <div id="tools">
+    <label>
+      <input type="radio" name="tool" value="pen" checked> Pen (Black)
+    </label>
+    <label>
+      <input type="radio" name="tool" value="eraser"> Eraser (White)
+    </label>
+  </div>
+  
+  <!-- Drawing Grid -->
+  <div id="grid"></div>
+  
+  <!-- Confidence Bars -->
+  <h2>Confidence Bars</h2>
+  <div id="confidenceBars"></div>
+
+  <hr>
+  <h2>Load Model Weights</h2>
+  <p>Select a folder that contains CSV files named <strong>layer_0.csv, layer_1.csv, ...</strong></p>
+  <input type="file" id="folderInput" webkitdirectory directory multiple>
+  <button id="loadWeightsButton">Load Weights</button>
+
+  <script>
+    // ---------- Global Variables for Model Weights & Update Handling ----------
+    let modelWeights = null;  // Array of matrices (loaded from CSV)
+    // Fallback: default random model (example: two layers, adjust as needed)
+    function generateMatrix(rows, cols) {
+      const matrix = [];
+      for (let i = 0; i < rows; i++) {
+        const row = [];
+        for (let j = 0; j < cols; j++) {
+          row.push(Math.random() * 2 - 1);
+        }
+        matrix.push(row);
+      }
+      return matrix;
+    }
+    // Example fallback model (you should load your actual model later)
+    modelWeights = [
+      generateMatrix(784, 100),
+      generateMatrix(100, 10)
+    ];
+    
+    // Update control flags (one-input update queue)
+    let isUpdating = false;
+    let pendingUpdate = false;
+    
+    // ---------- Neural Network Functions ----------
+    function sigmoid(x) {
+      return 1 / (1 + Math.exp(-x));
+    }
+    // Feedforward that works with an arbitrary number of layers
+    function feedforward(inputVector) {
+      let a = inputVector.slice();
+      for (let m = 0; m < modelWeights.length; m++) {
+        const W = modelWeights[m];
+        const nextA = [];
+        for (let j = 0; j < W[0].length; j++) {
+          let sum = 0;
+          for (let i = 0; i < a.length; i++) {
+            sum += a[i] * W[i][j];
+          }
+          nextA.push(sigmoid(sum));
+        }
+        a = nextA;
+      }
+      return a;
+    }
+    function updateConfidenceBars(confidences) {
+      const confidenceBarsDiv = document.getElementById('confidenceBars');
+      confidenceBarsDiv.innerHTML = '';
+      for (let i = 0; i < confidences.length; i++) {
+        const container = document.createElement('div');
+        container.classList.add('bar-container');
+        const bar = document.createElement('div');
+        bar.classList.add('bar');
+        const percentage = (confidences[i] * 100).toFixed(1);
+        bar.style.width = percentage + '%';
+        bar.textContent = `${i}: ${percentage}%`;
+        container.appendChild(bar);
+        confidenceBarsDiv.appendChild(container);
+      }
+    }
+    
+    // ---------- Automatic Prediction Update ----------
+    function updatePrediction() {
+      if (isUpdating) {
+        pendingUpdate = true;
+        return;
+      }
+      isUpdating = true;
+      const inputVector = cellElements.map(cell => cell.classList.contains('active') ? 1 : 0);
+      const outputs = feedforward(inputVector);
+      updateConfidenceBars(outputs);
+      isUpdating = false;
+      if (pendingUpdate) {
+        pendingUpdate = false;
+        updatePrediction();
+      }
+    }
+    
+    // ---------- Model Weights Loading from Folder ----------
+    document.getElementById('loadWeightsButton').addEventListener('click', function() {
+      const folderInput = document.getElementById('folderInput');
+      if (!folderInput.files || folderInput.files.length === 0) {
+        alert("Please select a folder containing the CSV files.");
+        return;
+      }
+      const files = folderInput.files;
+      let loadedFiles = 0;
+      const tempModel = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const match = file.name.match(/layer_(\d+)\.csv/);
+        if (match) {
+          const layerIndex = parseInt(match[1], 10);
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            const content = e.target.result;
+            const matrix = content.trim().split("\n").map(row => row.split(",").map(Number));
+            tempModel[layerIndex] = matrix;
+            loadedFiles++;
+            if (loadedFiles === tempModel.length) {
+              modelWeights = tempModel;
+              alert("Model weights loaded successfully!");
+              updatePrediction();
+            }
+          };
+          reader.readAsText(file);
+        }
+      }
+    });
+    
+    // ---------- Brush Settings ----------
+    // Brush pattern: a 5x5 pattern; true indicates pixel should be set.
+    // Pattern:
+    //   [ [false, true, true, true, false],
+    //     [true,  true, true, true, true ],
+    //     [true,  true, true, true, true ],
+    //     [true,  true, true, true, true ],
+    //     [false, true, true, true, false] ]
+    const brushPattern = [
+  [true, true, true],
+  [true, true, true],
+  [true, true, true]
+];
+const brushRadius = 1; // For a 3x3 brush, the radius is 1 (i.e., 1 cell offset from the center)
+    
+    // ---------- Drawing Grid Setup ----------
+    const gridElement = document.getElementById('grid');
+    const gridSize = 28;
+    const cellElements = [];
+    let isDrawing = false;
+    
+    // Tool selection: "pen" for black (draw), "eraser" for white (erase).
+    let currentTool = "pen";
+    document.querySelectorAll('input[name="tool"]').forEach(radio => {
+      radio.addEventListener('change', function() {
+        currentTool = this.value;
+      });
+    });
+    
+    // Create 28x28 grid of cells and attach mousedown and mouseover events.
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.dataset.index = r * gridSize + c;
+        // When mouse is pressed down on a cell, apply the brush.
+        cell.addEventListener('mousedown', function() {
+          isDrawing = true;
+          applyBrush(cell);
+        });
+        // When mouse moves over a cell (while pressed), apply the brush.
+        cell.addEventListener('mouseover', function() {
+          if (isDrawing) {
+            applyBrush(cell);
+          }
+        });
+        gridElement.appendChild(cell);
+        cellElements.push(cell);
+      }
+    }
+    
+    document.addEventListener('mouseup', function() {
+      isDrawing = false;
+    });
+    
+    // ---------- Brush Application ----------
+    function applyBrush(cell) {
+      // Get cell's row and column based on its dataset index.
+      const index = parseInt(cell.dataset.index, 10);
+      const row = Math.floor(index / gridSize);
+      const col = index % gridSize;
+      
+      // Loop over a 5x5 area around the cell.
+      for (let dr = -brushRadius; dr <= brushRadius; dr++) {
+        for (let dc = -brushRadius; dc <= brushRadius; dc++) {
+          const brushVal = brushPattern[dr + brushRadius][dc + brushRadius];
+          if (!brushVal) continue;
+          const newRow = row + dr;
+          const newCol = col + dc;
+          // Check grid boundaries.
+          if (newRow < 0 || newRow >= gridSize || newCol < 0 || newCol >= gridSize) continue;
+          const targetIndex = newRow * gridSize + newCol;
+          const targetCell = cellElements[targetIndex];
+          // Apply pen (black) or eraser (white).
+          if (currentTool === "pen") {
+            targetCell.classList.add('active');
+          } else {
+            targetCell.classList.remove('active');
+          }
+        }
+      }
+      updatePrediction();
+    }
+    
+    // ---------- Auto-update While Drawing ----------
+    // Each brush application triggers an update (with internal throttling via updatePrediction).
+  </script>
+</body>
+</html>
